@@ -13,6 +13,7 @@ const MAX_BACKOFF = 5 * 60_000;
 const DOWNLOAD_TIMEOUT = 9 * 60_000;
 const STALL_TIMEOUT = 60_000;
 const PROGRESS_STEP = 20 * 1024 * 1024;
+const PART_SIZE = 8 * 1024 * 1024;
 // The server leases a claimed item for 10 minutes; give up on it a bit earlier.
 const CLAIM_WAIT_LIMIT = 8 * 60_000;
 const ACTIVITY_EVENTS = ['scroll', 'wheel', 'keydown', 'mousedown', 'click', 'touchstart'];
@@ -189,16 +190,42 @@ function mb(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-async function upload(item: WantedItem, blob: Blob) {
-  const res = await vaultRequest(
-    'PUT',
-    vaultUrl(`/media/${item.rest_id}/${item.idx}`),
-    blob,
-    blob.type,
-  );
+function ensureOk(res: { status: number; body: string }) {
   if (res.status < 200 || res.status >= 300) {
     throw new Error(`HTTP ${res.status}: ${res.body.slice(0, 200)}`);
   }
+}
+
+/**
+ * Small files go up in one request. Large ones are sent in parts, because
+ * handing a huge Blob to GM_xmlhttpRequest at once can stall without an error.
+ */
+async function upload(item: WantedItem, blob: Blob) {
+  const base = `/media/${item.rest_id}/${item.idx}`;
+  if (blob.size <= PART_SIZE) {
+    ensureOk(await vaultRequest('PUT', vaultUrl(base), blob, blob.type));
+    return;
+  }
+  for (let offset = 0; offset < blob.size; offset += PART_SIZE) {
+    const part = blob.slice(offset, offset + PART_SIZE, 'application/octet-stream');
+    ensureOk(
+      await vaultRequest(
+        'PUT',
+        vaultUrl(`${base}/parts/${offset}`),
+        part,
+        'application/octet-stream',
+      ),
+    );
+    logger.info(
+      `Local sync: uploaded ${mb(Math.min(offset + PART_SIZE, blob.size))} / ${mb(blob.size)}`,
+    );
+  }
+  ensureOk(
+    await vaultRequest('POST', vaultUrl(`${base}/complete`), {
+      content_type: blob.type,
+      bytes: blob.size,
+    }),
+  );
 }
 
 async function processItem(item: WantedItem, weight: number) {

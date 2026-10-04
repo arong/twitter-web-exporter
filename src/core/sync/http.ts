@@ -2,7 +2,7 @@ import { GM_xmlhttpRequest } from '$';
 import { options } from '../options';
 
 const REQUEST_TIMEOUT = 30_000;
-const UPLOAD_TIMEOUT = 10 * 60_000;
+const UPLOAD_TIMEOUT = 2 * 60_000;
 
 export interface HttpResult {
   status: number;
