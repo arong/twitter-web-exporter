@@ -68,5 +68,18 @@
   "Queue every tweet in the local database for sync?": "Queue every tweet in the local database for sync?",
   "Queued:": "Queued:",
   "Connection OK.": "Connection OK.",
-  "Connection failed.": "Connection failed."
+  "Connection failed.": "Connection failed.",
+  "Download media while browsing": "Download media while browsing",
+  "Media per hour (video counts 5)": "Media per hour (video counts 5)",
+  "Max file size (MB)": "Max file size (MB)",
+  "Last hour:": "Last hour:",
+  "Saved:": "Saved:",
+  "Off": "Off",
+  "Nothing to download": "Nothing to download",
+  "Waiting for you to browse": "Waiting for you to browse",
+  "Waiting between downloads": "Waiting between downloads",
+  "Downloading": "Downloading",
+  "Local server unavailable, retrying": "Local server unavailable, retrying",
+  "Paused until": "Paused until",
+  "Hourly limit reached, until": "Hourly limit reached, until"
 }

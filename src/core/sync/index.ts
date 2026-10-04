@@ -1,16 +1,16 @@
 import { signal } from '@preact/signals';
-import { GM_xmlhttpRequest } from '$';
 
 import packageJson from '@/../package.json';
 import logger from '@/utils/logger';
 import { db } from '../database';
 import { options } from '../options';
+import { vaultEndpoint, vaultRequest, vaultUrl } from './http';
+import { startMediaSync } from './media';
 
 const BATCH_SIZE = 50;
 const POLL_INTERVAL = 5_000;
 const MIN_BACKOFF = 5_000;
 const MAX_BACKOFF = 5 * 60_000;
-const REQUEST_TIMEOUT = 30_000;
 
 export const syncPendingCount = signal(0);
 export const syncLastSuccessAt = signal<number | null>(null);
@@ -21,37 +21,6 @@ let started = false;
 let backoff = 0;
 let nextAttemptAt = 0;
 let timer: number | null = null;
-
-interface HttpResult {
-  status: number;
-  body: string;
-}
-
-function request(method: 'GET' | 'POST', url: string, data?: unknown): Promise<HttpResult> {
-  return new Promise((resolve, reject) => {
-    GM_xmlhttpRequest({
-      method,
-      url,
-      timeout: REQUEST_TIMEOUT,
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Vault-Token': options.get('localSyncToken') ?? '',
-      },
-      data: data === undefined ? undefined : JSON.stringify(data),
-      onload: (res) => resolve({ status: res.status, body: res.responseText }),
-      onerror: () => reject(new Error(`Network error: ${url}`)),
-      ontimeout: () => reject(new Error(`Request timed out: ${url}`)),
-    });
-  });
-}
-
-function endpoint() {
-  return options.get('localSyncEndpoint') || 'http://127.0.0.1:7687/store';
-}
-
-function healthUrl() {
-  return new URL('/health', endpoint()).toString();
-}
 
 async function refreshPendingCount() {
   syncPendingCount.value = await db.outboxCount();
@@ -74,7 +43,7 @@ async function flush() {
       const tweets = await db.getTweetsByIds(ids);
 
       if (tweets.length) {
-        const res = await request('POST', endpoint(), {
+        const res = await vaultRequest('POST', vaultEndpoint(), {
           client_version: packageJson.version,
           tweets,
         });
@@ -127,6 +96,7 @@ export function startLocalSync() {
   window.setInterval(flush, POLL_INTERVAL);
   refreshPendingCount();
   flush();
+  startMediaSync();
 }
 
 /**
@@ -143,7 +113,7 @@ export function retryLocalSyncNow() {
  */
 export async function testLocalSyncConnection(): Promise<{ ok: boolean; message: string }> {
   try {
-    const res = await request('GET', healthUrl());
+    const res = await vaultRequest('GET', vaultUrl('/health'));
     if (res.status === 401) {
       return { ok: false, message: 'Invalid token (HTTP 401)' };
     }

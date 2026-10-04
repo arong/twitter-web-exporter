@@ -68,5 +68,18 @@
   "Queue every tweet in the local database for sync?": "把本地数据库里的所有推文加入同步队列？",
   "Queued:": "已入队：",
   "Connection OK.": "连接正常。",
-  "Connection failed.": "连接失败。"
+  "Connection failed.": "连接失败。",
+  "Download media while browsing": "浏览时下载媒体",
+  "Media per hour (video counts 5)": "每小时媒体上限（视频算 5 个）",
+  "Max file size (MB)": "单个文件上限（MB）",
+  "Last hour:": "最近一小时：",
+  "Saved:": "已保存：",
+  "Off": "已关闭",
+  "Nothing to download": "没有待下载的媒体",
+  "Waiting for you to browse": "等你继续浏览",
+  "Waiting between downloads": "下载间隔中",
+  "Downloading": "下载中",
+  "Local server unavailable, retrying": "本地服务不可用，稍后重试",
+  "Paused until": "暂停至",
+  "Hourly limit reached, until": "已达每小时上限，恢复于"
 }

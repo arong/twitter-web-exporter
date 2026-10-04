@@ -18,6 +18,9 @@ export interface AppOptions {
   localSyncEnabled?: boolean;
   localSyncEndpoint?: string;
   localSyncToken?: string;
+  localSyncMedia?: boolean;
+  localSyncMediaHourlyLimit?: number;
+  localSyncMediaVideoMaxMB?: number;
   version?: string;
 }
 
@@ -42,6 +45,9 @@ export const DEFAULT_APP_OPTIONS: AppOptions = {
   localSyncEnabled: false,
   localSyncEndpoint: 'http://127.0.0.1:7687/store',
   localSyncToken: '',
+  localSyncMedia: true,
+  localSyncMediaHourlyLimit: 60,
+  localSyncMediaVideoMaxMB: 200,
   version: packageJson.version,
 };
 
