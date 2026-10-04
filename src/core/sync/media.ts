@@ -10,7 +10,9 @@ const TICK = 1_000;
 const EMPTY_QUEUE_POLL = 15_000;
 const MIN_BACKOFF = 5_000;
 const MAX_BACKOFF = 5 * 60_000;
-const DOWNLOAD_TIMEOUT = 10 * 60_000;
+const DOWNLOAD_TIMEOUT = 9 * 60_000;
+const STALL_TIMEOUT = 60_000;
+const PROGRESS_STEP = 20 * 1024 * 1024;
 // The server leases a claimed item for 10 minutes; give up on it a bit earlier.
 const CLAIM_WAIT_LIMIT = 8 * 60_000;
 const ACTIVITY_EVENTS = ['scroll', 'wheel', 'keydown', 'mousedown', 'click', 'touchstart'];
@@ -108,10 +110,11 @@ async function claim(): Promise<WantedItem | null> {
 
 async function reportFailed(item: WantedItem, status: number | null, error: string) {
   try {
-    await vaultRequest('POST', vaultUrl(`/media/${item.rest_id}/${item.idx}/failed`), {
+    const res = await vaultRequest('POST', vaultUrl(`/media/${item.rest_id}/${item.idx}/failed`), {
       status,
       error,
     });
+    logger.warn(`Local sync: reported failure (${status ?? error}), server said ${res.status}`);
   } catch (err) {
     logger.warn('Local sync: failed to report media failure', err);
   }
@@ -123,13 +126,23 @@ async function reportFailed(item: WantedItem, status: number | null, error: stri
  */
 async function download(url: string, limit: number): Promise<DownloadResult> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT);
+  const timer = window.setTimeout(() => controller.abort('timeout'), DOWNLOAD_TIMEOUT);
+  let stallTimer = 0;
+  const armStall = () => {
+    window.clearTimeout(stallTimer);
+    stallTimer = window.setTimeout(() => controller.abort('stalled'), STALL_TIMEOUT);
+  };
+  armStall();
   try {
     const res = await fetch(url, { credentials: 'omit', signal: controller.signal });
+    armStall();
+    const declared = Number(res.headers.get('content-length') ?? 0);
+    logger.info(
+      `Local sync: media response ${res.status}, ${declared ? mb(declared) : 'unknown size'}`,
+    );
     if (!res.ok) {
       return { kind: 'http', status: res.status };
     }
-    const declared = Number(res.headers.get('content-length') ?? 0);
     if (declared > limit) {
       controller.abort();
       return { kind: 'too-large', bytes: declared };
@@ -144,12 +157,18 @@ async function download(url: string, limit: number): Promise<DownloadResult> {
     const reader = res.body.getReader();
     const chunks: Uint8Array[] = [];
     let total = 0;
+    let nextReport = PROGRESS_STEP;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) {
         break;
       }
+      armStall();
       total += value.byteLength;
+      if (total >= nextReport) {
+        logger.info(`Local sync: downloaded ${mb(total)}`);
+        nextReport += PROGRESS_STEP;
+      }
       if (total > limit) {
         controller.abort();
         return { kind: 'too-large', bytes: total };
@@ -158,10 +177,16 @@ async function download(url: string, limit: number): Promise<DownloadResult> {
     }
     return { kind: 'ok', blob: new Blob(chunks as BlobPart[], { type }) };
   } catch (err) {
-    return { kind: 'network', error: String(err) };
+    const reason = controller.signal.aborted ? String(controller.signal.reason) : String(err);
+    return { kind: 'network', error: reason };
   } finally {
     window.clearTimeout(timer);
+    window.clearTimeout(stallTimer);
   }
+}
+
+function mb(bytes: number) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 async function upload(item: WantedItem, blob: Blob) {
@@ -183,8 +208,11 @@ async function processItem(item: WantedItem, weight: number) {
   }
 
   mediaState.value = { kind: 'downloading' };
+  logger.info(`Local sync: downloading ${item.kind} ${item.rest_id}/${item.idx} ${item.url}`);
+  const startedAt = Date.now();
   const result = await download(item.url, maxBytes());
   const now = Date.now();
+  logger.info(`Local sync: download ${result.kind} after ${Math.round((now - startedAt) / 1000)}s`);
   pacer.recordDownload(now, weight);
   mediaUsedLastHour.value = pacer.used(now);
 
@@ -193,10 +221,12 @@ async function processItem(item: WantedItem, weight: number) {
       pacer.recordSuccess();
       try {
         await upload(item, result.blob);
+        logger.info(`Local sync: uploaded ${mb(result.blob.size)} ${result.blob.type}`);
         mediaSavedCount.value += 1;
         mediaLastError.value = null;
         serverBackoff = 0;
       } catch (err) {
+        logger.warn(`Local sync: upload failed: ${String(err)}`);
         serverFailed(`Upload failed: ${String(err)}`);
       }
       break;
@@ -219,58 +249,66 @@ async function processItem(item: WantedItem, weight: number) {
 
 async function loop() {
   for (;;) {
-    if (!enabled()) {
-      mediaState.value = { kind: 'off' };
-      await sleep(TICK);
-      continue;
-    }
-
-    pacer.hourlyLimit = options.get('localSyncMediaHourlyLimit') || 60;
-    const now = Date.now();
-    mediaUsedLastHour.value = pacer.used(now);
-
-    const ready = pacer.decide(now, visible());
-    if (!ready.ok) {
-      showDecision(ready);
-      await sleep(TICK);
-      continue;
-    }
-    if (now < nextClaimAt) {
-      await sleep(TICK);
-      continue;
-    }
-
-    let item: WantedItem | null;
     try {
-      item = await claim();
+      await step();
     } catch (err) {
-      serverFailed(`Claim failed: ${String(err)}`);
-      continue;
-    }
-    serverBackoff = 0;
-    if (!item) {
-      nextClaimAt = Date.now() + EMPTY_QUEUE_POLL;
-      mediaState.value = { kind: 'idle' };
-      continue;
-    }
-
-    const weight = item.kind === 'video' ? VIDEO_WEIGHT : 1;
-    const deadline = Date.now() + CLAIM_WAIT_LIMIT;
-    let go = false;
-    while (enabled() && Date.now() < deadline) {
-      const decision = pacer.decide(Date.now(), visible(), weight);
-      if (decision.ok) {
-        go = true;
-        break;
-      }
-      showDecision(decision);
-      await sleep(TICK);
-    }
-    // When not going ahead the lease simply expires and the item comes back later.
-    if (go) {
-      await processItem(item, weight);
+      logger.error(`Local sync: media step failed: ${String(err)}`, err);
+      mediaLastError.value = String(err);
+      await sleep(EMPTY_QUEUE_POLL);
     }
   }
+}
+
+async function step() {
+  if (!enabled()) {
+    mediaState.value = { kind: 'off' };
+    await sleep(TICK);
+    return;
+  }
+
+  pacer.hourlyLimit = options.get('localSyncMediaHourlyLimit') || 60;
+  const now = Date.now();
+  mediaUsedLastHour.value = pacer.used(now);
+
+  const ready = pacer.decide(now, visible());
+  if (!ready.ok) {
+    showDecision(ready);
+    await sleep(TICK);
+    return;
+  }
+  if (now < nextClaimAt) {
+    await sleep(TICK);
+    return;
+  }
+
+  const item = await claim().catch((err) => {
+    serverFailed(`Claim failed: ${String(err)}`);
+    return undefined;
+  });
+  if (item === undefined) {
+    return;
+  }
+  serverBackoff = 0;
+  if (!item) {
+    nextClaimAt = Date.now() + EMPTY_QUEUE_POLL;
+    mediaState.value = { kind: 'idle' };
+    return;
+  }
+  logger.info(`Local sync: claimed ${item.kind} ${item.rest_id}/${item.idx}`);
+
+  const weight = item.kind === 'video' ? VIDEO_WEIGHT : 1;
+  const deadline = Date.now() + CLAIM_WAIT_LIMIT;
+  while (enabled() && Date.now() < deadline) {
+    const decision = pacer.decide(Date.now(), visible(), weight);
+    if (decision.ok) {
+      await processItem(item, weight);
+      return;
+    }
+    showDecision(decision);
+    await sleep(TICK);
+  }
+  // The lease simply expires and the item comes back later.
+  logger.info(`Local sync: released ${item.rest_id}/${item.idx} without downloading`);
 }
 
 /**
