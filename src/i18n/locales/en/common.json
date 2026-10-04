@@ -36,7 +36,6 @@
   "Export Data": "Export Data",
   "JSON View": "JSON View",
   "Media View": "Media View",
-
   "Bookmarks": "Bookmarks",
   "CommunityMembers": "CommunityMembers",
   "CommunityTimeline": "CommunityTimeline",
@@ -55,5 +54,19 @@
   "UserAbout": "UserAbout",
   "UserDetail": "UserDetail",
   "UserMedia": "UserMedia",
-  "UserTweets": "UserTweets"
+  "UserTweets": "UserTweets",
+  "Local Sync": "Local Sync",
+  "Send captured tweets to local server": "Send captured tweets to local server",
+  "Endpoint": "Endpoint",
+  "Token": "Token",
+  "Pending:": "Pending:",
+  "Last sync:": "Last sync:",
+  "Never": "Never",
+  "Test Connection": "Test",
+  "Retry Now": "Retry",
+  "Queue All": "Queue All",
+  "Queue every tweet in the local database for sync?": "Queue every tweet in the local database for sync?",
+  "Queued:": "Queued:",
+  "Connection OK.": "Connection OK.",
+  "Connection failed.": "Connection failed."
 }

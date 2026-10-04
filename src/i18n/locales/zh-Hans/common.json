@@ -36,7 +36,6 @@
   "Export Data": "导出数据",
   "JSON View": "JSON 数据预览",
   "Media View": "媒体预览",
-
   "Bookmarks": "书签",
   "CommunityMembers": "社群成员",
   "CommunityTimeline": "社群时间线",
@@ -55,5 +54,19 @@
   "UserAbout": "账号关于信息",
   "UserDetail": "用户详情",
   "UserMedia": "用户媒体",
-  "UserTweets": "用户推文"
+  "UserTweets": "用户推文",
+  "Local Sync": "本地同步",
+  "Send captured tweets to local server": "把捕获的推文发送到本地服务",
+  "Endpoint": "服务地址",
+  "Token": "令牌",
+  "Pending:": "待发送：",
+  "Last sync:": "上次同步：",
+  "Never": "从未",
+  "Test Connection": "测试连接",
+  "Retry Now": "立即重试",
+  "Queue All": "全部入队",
+  "Queue every tweet in the local database for sync?": "把本地数据库里的所有推文加入同步队列？",
+  "Queued:": "已入队：",
+  "Connection OK.": "连接正常。",
+  "Connection failed.": "连接失败。"
 }

@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { App } from './core/app';
 import extensions from './core/extensions';
+import { startLocalSync } from './core/sync';
 
 import BookmarksModule from './modules/bookmarks';
 import CommunityMembersModule from './modules/community-members';
@@ -44,6 +45,7 @@ extensions.add(SearchTimelineModule);
 extensions.add(DirectMessagesModule);
 extensions.add(RuntimeLogsModule);
 extensions.start();
+startLocalSync();
 
 function mountApp() {
   const root = document.createElement('div');
