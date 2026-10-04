@@ -13,6 +13,7 @@
     "build": "tsc && vite build",
     "prepare": "husky",
     "lint": "eslint .",
+    "test": "bun test",
     "commitlint": "commitlint --edit",
     "changelog": "git-cliff -o CHANGELOG.md",
     "preview": "vite preview"

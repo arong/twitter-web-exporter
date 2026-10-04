@@ -12,7 +12,15 @@ import { ExtensionType } from '../extensions';
 import { options } from '../options';
 
 const DB_NAME = packageJson.name;
-const DB_VERSION = 3;
+const DB_VERSION = 4;
+
+/**
+ * A tweet waiting to be sent to the local sync server.
+ */
+export interface OutboxItem {
+  rest_id: string;
+  queued_at: number;
+}
 
 declare global {
   interface Window {
@@ -57,6 +65,10 @@ export class DatabaseManager {
 
   private captures() {
     return this.db.table<Capture>('captures');
+  }
+
+  private outbox() {
+    return this.db.table<OutboxItem>('outbox');
   }
 
   /*
@@ -126,6 +138,9 @@ export class DatabaseManager {
   async extAddTweets(extName: string, items: WithSortIndex<Tweet>[]) {
     const sorted = this.sortItems(items);
     await this.upsertTweets(sorted.map((item) => item.data));
+    if (options.get('localSyncEnabled')) {
+      await this.outboxEnqueue(sorted.map((item) => item.data.rest_id));
+    }
     await this.upsertCaptures(
       sorted.map((item, i) => ({
         id: `${extName}-${item.data.rest_id}`,
@@ -195,6 +210,61 @@ export class DatabaseManager {
 
   /*
   |--------------------------------------------------------------------------
+  | Local Sync Outbox
+  |--------------------------------------------------------------------------
+  */
+
+  private outboxListeners = new Set<() => void>();
+
+  onOutboxChange(listener: () => void) {
+    this.outboxListeners.add(listener);
+    return () => this.outboxListeners.delete(listener);
+  }
+
+  private notifyOutbox() {
+    this.outboxListeners.forEach((listener) => listener());
+  }
+
+  async outboxEnqueue(restIds: string[]) {
+    const ids = [...new Set(restIds.filter(Boolean))];
+    if (!ids.length) {
+      return;
+    }
+    const now = Date.now();
+    await this.outbox()
+      .bulkPut(ids.map((rest_id, i) => ({ rest_id, queued_at: now + i })))
+      .catch(this.logError);
+    this.notifyOutbox();
+  }
+
+  async outboxEnqueueAll() {
+    const ids = (await this.tweets().toCollection().primaryKeys().catch(this.logError)) ?? [];
+    await this.outboxEnqueue(ids as string[]);
+    return ids.length;
+  }
+
+  async outboxPeek(limit: number) {
+    return (
+      (await this.outbox().orderBy('queued_at').limit(limit).toArray().catch(this.logError)) ?? []
+    );
+  }
+
+  async outboxRemove(restIds: string[]) {
+    await this.outbox().bulkDelete(restIds).catch(this.logError);
+    this.notifyOutbox();
+  }
+
+  async outboxCount() {
+    return (await this.outbox().count().catch(this.logError)) ?? 0;
+  }
+
+  async getTweetsByIds(restIds: string[]) {
+    const tweets = await this.tweets().bulkGet(restIds).catch(this.logError);
+    return (tweets ?? []).filter((t): t is Tweet => !!t && this.filterEmptyTweet(t));
+  }
+
+  /*
+  |--------------------------------------------------------------------------
   | Export and Import Methods
   |--------------------------------------------------------------------------
   */
@@ -225,6 +295,8 @@ export class DatabaseManager {
     await this.deleteAllCaptures();
     await this.deleteAllTweets();
     await this.deleteAllUsers();
+    await this.outbox().clear().catch(this.logError);
+    this.notifyOutbox();
     logger.info('Database cleared');
   }
 
@@ -404,10 +476,18 @@ export class DatabaseManager {
         });
 
       // v3: adds sort_index index to captures for timeline ordering.
+      this.db.version(3).stores({
+        tweets: tweetIndexPaths.join(','),
+        users: userIndexPaths.join(','),
+        captures: captureIndexPaths.join(','),
+      });
+
+      // v4: adds outbox for tweets pending local sync.
       this.db.version(DB_VERSION).stores({
         tweets: tweetIndexPaths.join(','),
         users: userIndexPaths.join(','),
         captures: captureIndexPaths.join(','),
+        outbox: 'rest_id,queued_at',
       });
 
       await this.db.open();

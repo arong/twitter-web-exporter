@@ -15,6 +15,12 @@ export interface AppOptions {
   filenamePattern?: string;
   language?: string;
   dedicatedDbForAccounts?: boolean;
+  localSyncEnabled?: boolean;
+  localSyncEndpoint?: string;
+  localSyncToken?: string;
+  localSyncMedia?: boolean;
+  localSyncMediaHourlyLimit?: number;
+  localSyncMediaVideoMaxMB?: number;
   version?: string;
 }
 
@@ -36,6 +42,12 @@ export const DEFAULT_APP_OPTIONS: AppOptions = {
   filenamePattern: '{screen_name}_{id}_{type}_{num}_{date}.{ext}',
   language: '',
   dedicatedDbForAccounts: false,
+  localSyncEnabled: false,
+  localSyncEndpoint: 'http://127.0.0.1:7687/store',
+  localSyncToken: '',
+  localSyncMedia: true,
+  localSyncMediaHourlyLimit: 60,
+  localSyncMediaVideoMaxMB: 200,
   version: packageJson.version,
 };
 

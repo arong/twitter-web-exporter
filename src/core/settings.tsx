@@ -21,6 +21,7 @@ import { saveFile } from '@/utils/exporter';
 import { db } from './database';
 import extensionManager from './extensions';
 import { DEFAULT_APP_OPTIONS, options, THEMES } from './options';
+import { LocalSyncSettings } from './sync/settings';
 
 export function Settings() {
   const { t, i18n } = useTranslation();
@@ -246,6 +247,7 @@ export function Settings() {
             </div>
           </div>
         </div>
+        <LocalSyncSettings styles={styles} />
         {/* Enable or disable modules. */}
         <p class={styles.subtitle}>{t('Modules (Scroll to see more)')}</p>
         <div class={cx(styles.block, 'flex-col', 'max-h-44 overflow-scroll')}>
